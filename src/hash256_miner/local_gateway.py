@@ -11,7 +11,9 @@ Local control plane + web UI (binds to 127.0.0.1).
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Optional
 
@@ -30,6 +32,8 @@ from hash256_miner.flashbots_bundle import (
     send_bundle_single_tx,
 )
 from hash256_miner.tx import build_signed_mine_raw, load_private_key
+
+_log = logging.getLogger("hash256_miner.local_gateway")
 
 cli = typer.Typer(invoke_without_command=True, no_args_is_help=False, add_completion=False)
 
@@ -118,6 +122,11 @@ def _main(
     except ImportError as e:
         raise typer.Exit('请安装: pip install -e ".[remote]"') from e
 
+    logging.basicConfig(
+        level=os.environ.get("HASH256_GATEWAY_LOG_LEVEL", "INFO").upper(),
+        format="%(levelname)s %(name)s %(message)s",
+    )
+
     import httpx
 
     web_ui = _repo_web_ui_dir()
@@ -185,10 +194,25 @@ def _main(
                 headers["X-API-Key"] = rkey
 
             timeout_s = float(os.environ.get("HASH256_REMOTE_POW_HTTP_TIMEOUT", "3600"))
+            _log.info(
+                "remote PoW POST start url=%s batch_size=%s max_batches=%s timeout_s=%s",
+                body.remote_worker,
+                body.batch_size,
+                max_batches,
+                timeout_s,
+            )
+            t0 = time.perf_counter()
             with httpx.Client(timeout=timeout_s) as client:
                 r = client.post(body.remote_worker, json=payload, headers=headers)
                 r.raise_for_status()
                 jr = r.json()
+            dt = time.perf_counter() - t0
+            _log.info(
+                "remote PoW POST done in %.1fs ok=%s error=%s",
+                dt,
+                jr.get("ok"),
+                jr.get("error"),
+            )
             if not jr.get("ok"):
                 raise HTTPException(status_code=400, detail=jr)
 

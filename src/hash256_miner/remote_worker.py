@@ -7,7 +7,9 @@ Protect with ``REMOTE_MINER_API_KEY`` (client sends ``X-API-Key``).
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from typing import Optional
 
 import typer
@@ -16,6 +18,8 @@ from pydantic import BaseModel, Field
 from hash256_miner.challenge import digest_less_than_difficulty, pow_hash
 from hash256_miner.env_bootstrap import load_repo_env_file
 from hash256_miner.workers import gpu_worker
+
+_log = logging.getLogger("hash256_miner.remote_worker")
 
 # 单入口：与 ``hash256-remote-worker --help`` 根级 ``--host/--port`` 一致（无需 ``serve`` 子命令）
 app = typer.Typer(invoke_without_command=True, no_args_is_help=False, add_completion=False)
@@ -59,6 +63,16 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
     bs = int(req.batch_size)
     base = int(req.base_nonce)
 
+    prog_step = int(os.environ.get("HASH256_POW_PROGRESS_LOG_EVERY", "2000"))
+    prog_step = max(100, min(50_000, prog_step))
+    t0 = time.perf_counter()
+    _log.info(
+        "pow-search start batch_size=%s max_batches=%s use_gpu=%s",
+        bs,
+        req.max_batches,
+        req.use_gpu and gpu_worker.cupy_available(),
+    )
+
     batches = 0
     while batches < req.max_batches:
         hit: Optional[int] = None
@@ -70,12 +84,31 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
         else:
             hit = _mine_cpu_batch(ch, diff, base, bs)
         batches += 1
+        if batches == 1 or batches % prog_step == 0:
+            _log.info(
+                "pow-search progress batches=%s/%s base_nonce=%s elapsed_s=%.1f",
+                batches,
+                req.max_batches,
+                base,
+                time.perf_counter() - t0,
+            )
         if hit is not None:
+            _log.info(
+                "pow-search hit nonce=%s batches=%s elapsed_s=%.1f",
+                int(hit),
+                batches,
+                time.perf_counter() - t0,
+            )
             return {"ok": True, "nonce": str(int(hit)), "batches": batches}
         base += bs
         if base >= 1 << 64:
             base = 0
 
+    _log.info(
+        "pow-search exhausted_max_batches batches=%s elapsed_s=%.1f",
+        batches,
+        time.perf_counter() - t0,
+    )
     return {"ok": False, "error": "exhausted_max_batches", "batches": batches}
 
 
@@ -97,6 +130,11 @@ def _main(
         raise typer.Exit(
             "缺少依赖：请执行 pip install -e \".[remote]\"（需要 fastapi、uvicorn）"
         ) from e
+
+    logging.basicConfig(
+        level=os.environ.get("HASH256_WORKER_LOG_LEVEL", "INFO").upper(),
+        format="%(levelname)s %(name)s %(message)s",
+    )
 
     api = FastAPI(title="HASH256 Remote PoW Worker", version="0.1.0")
     api.add_middleware(

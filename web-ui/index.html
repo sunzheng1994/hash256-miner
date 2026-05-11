@@ -306,7 +306,13 @@
         if (!confirm("Worker URL 中未包含 pow-search，可能填错。仍要继续吗？")) return;
       }
       btn.disabled = true;
-      $("out").textContent = "请求中…";
+      let elapsed = 0;
+      $("out").textContent = "请求中…（0s；PoW 在云端算，可能要几分钟）";
+      const tick = setInterval(() => {
+        elapsed += 1;
+        $("out").textContent =
+          "请求中…（" + elapsed + "s；本机终端可看网关日志，云端可看 Worker 日志）";
+      }, 1000);
       try {
         const batch = parseInt($("batch").value, 10);
         const offset = parseInt($("offset").value, 10);
@@ -340,6 +346,7 @@
       } catch (e) {
         $("out").textContent = String(e);
       } finally {
+        clearInterval(tick);
         btn.disabled = false;
       }
     };
