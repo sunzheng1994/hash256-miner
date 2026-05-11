@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HASH256 本地控制台</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; background: #0f1419; color: #e6edf3; }
+    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.25rem; }
+    label { display: block; margin-top: 0.75rem; font-size: 0.85rem; color: #8b949e; }
+    input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e6edf3; box-sizing: border-box; }
+    button { margin-top: 1.25rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none; background: #238636; color: #fff; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    pre { background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px; overflow: auto; font-size: 0.8rem; }
+    .note { font-size: 0.8rem; color: #8b949e; margin-top: 1.5rem; line-height: 1.5; }
+    a { color: #58a6ff; }
+  </style>
+</head>
+<body>
+  <h1>HASH256 本地挖矿 / Flashbots Bundle</h1>
+  <p>本页只调用 <code>http://127.0.0.1:8790</code> 上的本地网关。<strong>钱包私钥与 Flashbots 身份私钥只放在本机环境变量</strong>（见 README），浏览器不收集私钥。</p>
+
+  <label>读链 RPC（Alchemy / Infura 等）</label>
+  <input id="rpc" type="text" placeholder="https://eth-mainnet.g.alchemy.com/v2/..." />
+
+  <label>合约地址</label>
+  <input id="contract" type="text" placeholder="0x..." />
+
+  <label>矿工地址</label>
+  <input id="address" type="text" placeholder="0x..." />
+
+  <label>云端 PoW Worker（阿里云上部署的 hash256-remote-worker）</label>
+  <input id="remote" type="text" placeholder="https://your-ecs-ip:8787/v1/pow-search" />
+
+  <label>可选：Worker X-API-Key（若未在网关环境变量 REMOTE_MINER_API_KEY 中设置）</label>
+  <input id="rkey" type="password" placeholder="留空则使用网关环境变量" autocomplete="off" />
+
+  <label>可选：Flashbots relay URL（主网 / Sepolia 可不填，由网关按 chainId 默认）</label>
+  <input id="relay" type="text" placeholder="https://relay.flashbots.net" />
+
+  <button id="go">远程算 nonce + 本机签名提交 Bundle</button>
+  <pre id="out">（结果将显示在此处）</pre>
+
+  <div class="note">
+    1. 先在阿里云运行：<code>REMOTE_MINER_API_KEY=xxx hash256-remote-worker serve --host 0.0.0.0 --port 8787</code>（并开放安全组端口）。<br/>
+    2. 本机：<code>export HASH256_PRIVATE_KEY=...</code> 与 <code>export FLASHBOTS_AUTH_KEY=...</code> 后执行：<code>hash256-local-ui serve --port 8790</code>。<br/>
+    3. 用浏览器打开本页（可通过网关根路径 <code>/</code> 直接打开此 HTML）。
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    $("go").onclick = async () => {
+      const btn = $("go");
+      btn.disabled = true;
+      $("out").textContent = "请求中…";
+      try {
+        const body = {
+          rpc: $("rpc").value.trim(),
+          contract: $("contract").value.trim(),
+          address: $("address").value.trim(),
+          remote_worker: $("remote").value.trim(),
+          remote_api_key: $("rkey").value.trim() || null,
+          flashbots_relay: $("relay").value.trim() || null,
+        };
+        const r = await fetch("/api/mine-flashbots-bundle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const t = await r.text();
+        let j;
+        try { j = JSON.parse(t); } catch { j = t; }
+        $("out").textContent = JSON.stringify(j, null, 2);
+        if (!r.ok) $("out").textContent = "HTTP " + r.status + "\n" + t;
+      } catch (e) {
+        $("out").textContent = String(e);
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>

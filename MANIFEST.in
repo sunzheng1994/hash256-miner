@@ -1,0 +1,3 @@
+recursive-include src/hash256_miner/abi *.json
+recursive-include src/hash256_miner/cuda_kernels *.cu
+recursive-include web-ui *
