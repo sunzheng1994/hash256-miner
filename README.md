@@ -48,6 +48,23 @@ hash256-local-ui --host 127.0.0.1 --port 8790
 # 浏览器访问 http://127.0.0.1:8790/
 ```
 
+### 多 GPU 私有矿池（Pool Coordinator）
+
+租多台带 GPU 的机器、各跑一个 `hash256-remote-worker`，再在一台**中控**上跑 **`hash256-pool-coordinator`**：它对外提供 **`POST /v1/pow-pool/search`**，请求体与单机 **`/v1/pow-search`** 相同，并多一个可选字段 **`lease_max_batches`**（单次向某台 Worker 下发的批数上限，默认 `5000`）。中控按 Worker 数量把 **互不重叠的 `base_nonce` 区间**并行 POST 出去，**谁先算出有效 nonce 就返回谁的结果**，并取消同波其余请求。
+
+- **环境变量**：`HASH256_POOL_WORKER_URLS` 为逗号分隔的 Worker 完整 URL（每台形如 `http://IP:8787/v1/pow-search`）。可选 `HASH256_POOL_HTTP_TIMEOUT`、`HASH256_POOL_LOG_LEVEL`（见 `.env.example`）。
+- **本机网页**：把「Remote Worker」改成中控地址，例如 `http://10.0.0.1:8788/v1/pow-pool/search`（默认端口 **8788**，与单机 Worker **8787** 区分）。
+- **`max_batches` 含义**：在 Pool 模式下表示**全局**「租约批数」总预算（所有 Worker、所有波次之和），难度高时通常要比单机调得更大；仍受本机网关环境变量 **`HASH256_REMOTE_POW_MAX_BATCHES`** 上限约束。
+- **可选**：网关 JSON 增加 **`pool_lease_max_batches`** 会原样带上 **`lease_max_batches`**，用于调小单次租约、提高并行刷新频率。
+
+```bash
+# --- 中控机（可与某台 GPU 同机，但 URL 仍指向各 Worker 的 8787）---
+export HASH256_POOL_WORKER_URLS='http://10.0.0.1:8787/v1/pow-search,http://10.0.0.2:8787/v1/pow-search'
+export REMOTE_MINER_API_KEY='与 Worker 一致'
+pip install -e ".[remote]"
+hash256-pool-coordinator --host 0.0.0.0 --port 8788
+```
+
 CLI 单机挖矿走 bundle：`hash256-mine run ... --flashbots-bundle --flashbots-auth-key-file ./fb.key`（与 `--flashbots` Protect RPC、`--submit-rpc` 三选一）。
 
 ## 隐私提交（Flashbots Protect 等）

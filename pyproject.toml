@@ -22,7 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 gpu12 = ["cupy-cuda12x>=13.0.0"]
 gpu11 = ["cupy-cuda11x>=12.0.0"]
-dev = ["pytest>=8.0.0"]
+dev = ["pytest>=8.0.0", "httpx>=0.27.0"]
 remote = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
@@ -35,6 +35,7 @@ hash256-mine = "hash256_miner.miner:app"
 # 指向 Typer 实例（与 hash256-mine 一致），避免经 main() 再转发时与子命令解析冲突
 hash256-remote-worker = "hash256_miner.remote_worker:app"
 hash256-local-ui = "hash256_miner.local_gateway:cli"
+hash256-pool-coordinator = "hash256_miner.pool_coordinator:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

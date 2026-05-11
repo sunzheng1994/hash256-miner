@@ -51,7 +51,13 @@ class MineSubmitBody(BaseModel):
     remote_api_key: str | None = Field(None, description="Or set REMOTE_MINER_API_KEY on gateway")
     abi: str | None = None
     batch_size: int = 65_536
-    max_batches: int = Field(500_000, ge=1_000, le=10_000_000, description="转发给 Worker 的 max_batches 上限")
+    max_batches: int = Field(500_000, ge=1_000, le=10_000_000, description="转发给 Worker / Pool 的 max_batches（Pool 表示全局批数上限）")
+    pool_lease_max_batches: int | None = Field(
+        default=None,
+        ge=50,
+        le=1_000_000,
+        description="仅 Pool：转发 lease_max_batches；单 Worker 可留空",
+    )
     flashbots_relay: str | None = None
     target_block_offset: int = Field(1, ge=1, le=64)
 
@@ -189,6 +195,8 @@ def _main(
                 "use_gpu": use_gpu,
                 "max_batches": max_batches,
             }
+            if body.pool_lease_max_batches is not None:
+                payload["lease_max_batches"] = body.pool_lease_max_batches
             headers = {}
             if rkey:
                 headers["X-API-Key"] = rkey

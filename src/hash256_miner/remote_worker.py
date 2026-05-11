@@ -13,7 +13,7 @@ import time
 from typing import Optional
 
 import typer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from hash256_miner.challenge import digest_less_than_difficulty, pow_hash
 from hash256_miner.env_bootstrap import load_repo_env_file
@@ -26,6 +26,8 @@ app = typer.Typer(invoke_without_command=True, no_args_is_help=False, add_comple
 
 
 class PowSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     challenge_hex: str = Field(..., description="0x-prefixed or raw hex, 64 hex chars = 32 bytes")
     difficulty: int
     batch_size: int = 65_536
