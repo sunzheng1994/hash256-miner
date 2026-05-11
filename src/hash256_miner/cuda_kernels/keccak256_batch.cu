@@ -4,9 +4,29 @@
     https://github.com/chfast/ethash/blob/master/lib/keccak/keccak.c
   SPDX-License-Identifier: Apache-2.0
 */
+/*
+ * CuPy RawModule 走 NVRTC 时往往只有 libnvrtc，没有完整 CUDA Toolkit，故无 cuda_runtime.h。
+ * NVRTC 预定义 __CUDACC_RTC__；此时 __device__/__global__/blockIdx 等均为内建，无需该头文件。
+ */
+#if defined(__CUDACC_RTC__)
+/* NVRTC：不要 include 系统 stdint.h/string.h，否则会拖入 glibc 的 bits/libc-header-start.h 等路径导致 JIT 失败 */
+typedef unsigned char uint8_t;
+typedef unsigned int uint32_t;
+typedef unsigned long long uint64_t;
+typedef unsigned long size_t;
+__device__ __forceinline__ void k_memcpy(void* __restrict__ dst, const void* __restrict__ src, size_t n) {
+    char* d = (char*)dst;
+    const char* s = (const char*)src;
+    for (size_t i = 0; i < n; ++i) {
+        d[i] = s[i];
+    }
+}
+#else
 #include <cuda_runtime.h>
 #include <stdint.h>
 #include <string.h>
+#define k_memcpy memcpy
+#endif
 
 #if defined(__CUDA_ARCH__)
 #define K_HOST_DEVICE __host__ __device__
@@ -24,7 +44,7 @@ __device__ __forceinline__ uint64_t to_le64(uint64_t x) {
 
 __device__ __forceinline__ uint64_t load_le(const uint8_t* data) {
     uint64_t word;
-    memcpy(&word, data, sizeof(word));
+    k_memcpy(&word, data, sizeof(word));
     return to_le64(word);
 }
 
@@ -328,7 +348,7 @@ __device__ __forceinline__ void device_keccak256(const uint8_t* data, size_t siz
     #pragma unroll
     for (int i = 0; i < 4; i++) {
         uint64_t w = tmp[i];
-        memcpy(out + i * 8, &w, sizeof(uint64_t));
+        k_memcpy(out + i * 8, &w, sizeof(uint64_t));
     }
 }
 
@@ -362,7 +382,7 @@ extern "C" __global__ void hash256_mine_batch(
 
     unsigned long long nonce = base_nonce + (unsigned long long)tid;
     uint8_t buf[64];
-    memcpy(buf, challenge, 32);
+    k_memcpy(buf, challenge, 32);
     write_u256_be_nonce(buf, nonce);
 
     uint8_t digest[32];

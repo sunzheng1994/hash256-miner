@@ -3,65 +3,317 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HASH256 本地控制台</title>
+  <title>HASH256 · 方案 A（本机网关 + 云端 PoW）</title>
   <style>
-    :root { font-family: system-ui, sans-serif; background: #0f1419; color: #e6edf3; }
-    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
-    h1 { font-size: 1.25rem; }
-    label { display: block; margin-top: 0.75rem; font-size: 0.85rem; color: #8b949e; }
-    input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; border-radius: 6px; border: 1px solid #30363d; background: #161b22; color: #e6edf3; box-sizing: border-box; }
-    button { margin-top: 1.25rem; padding: 0.6rem 1.2rem; border-radius: 6px; border: none; background: #238636; color: #fff; font-weight: 600; cursor: pointer; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    pre { background: #161b22; border: 1px solid #30363d; padding: 1rem; border-radius: 8px; overflow: auto; font-size: 0.8rem; }
-    .note { font-size: 0.8rem; color: #8b949e; margin-top: 1.5rem; line-height: 1.5; }
-    a { color: #58a6ff; }
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #238636;
+      --accent-hover: #2ea043;
+      --warn-bg: rgba(187, 128, 9, 0.12);
+      --warn-border: #bb8009;
+      --ok: #3fb950;
+      --link: #58a6ff;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    * { box-sizing: border-box; }
+    body { max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+    h1 { font-size: 1.2rem; font-weight: 650; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+    }
+    .lead { font-size: 0.9rem; color: var(--muted); line-height: 1.55; margin: 0 0 1.25rem; }
+    .lead code { font-size: 0.82em; color: #79c0ff; background: var(--surface); padding: 0.1em 0.35em; border-radius: 4px; }
+    .flow {
+      display: grid;
+      gap: 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.25rem;
+      line-height: 1.45;
+    }
+    .flow strong { color: var(--text); }
+    section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+    section h2 {
+      font-size: 0.75rem;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 0 0 0.85rem;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 0.65rem; }
+    label:first-of-type { margin-top: 0; }
+    input, select {
+      width: 100%;
+      margin-top: 0.3rem;
+      padding: 0.5rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.88rem;
+    }
+    input:focus { outline: 2px solid #1f6feb; outline-offset: 0; border-color: #1f6feb; }
+    button.primary {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.65rem 1rem;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    button.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 0.75rem;
+      font-size: 0.78rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pill.ok { border-color: rgba(63, 185, 80, 0.45); color: var(--ok); }
+    .pill.bad { border-color: rgba(248, 81, 73, 0.45); color: #f85149; }
+    .warn {
+      margin-top: 0.75rem;
+      padding: 0.6rem 0.75rem;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      border-radius: 6px;
+      border: 1px solid var(--warn-border);
+      background: var(--warn-bg);
+      color: #d4a72c;
+    }
+    details.advanced { margin-top: 0.5rem; }
+    details.advanced summary {
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: var(--link);
+      user-select: none;
+    }
+    details.advanced summary::-webkit-details-marker { display: none; }
+    pre {
+      margin-top: 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 0.85rem;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: 0.75rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    footer.note {
+      margin-top: 1.25rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    footer.note a { color: var(--link); }
   </style>
 </head>
 <body>
-  <h1>HASH256 本地挖矿 / Flashbots Bundle</h1>
-  <p>本页只调用 <code>http://127.0.0.1:8790</code> 上的本地网关。<strong>钱包私钥与 Flashbots 身份私钥只放在本机环境变量</strong>（见 README），浏览器不收集私钥。</p>
+  <span class="tag">方案 A</span>
+  <h1>本机网关 + 云端 PoW + Flashbots Bundle</h1>
+  <p class="lead">
+    浏览器只访问本机 <code>http://127.0.0.1:8790</code>。<strong>钱包私钥</strong>与 <strong>Flashbots 身份私钥</strong>仅通过本机环境变量读取，不会出现在表单或网络请求体中。
+  </p>
 
-  <label>读链 RPC（Alchemy / Infura 等）</label>
-  <input id="rpc" type="text" placeholder="https://eth-mainnet.g.alchemy.com/v2/..." />
-
-  <label>合约地址</label>
-  <input id="contract" type="text" placeholder="0x..." />
-
-  <label>矿工地址</label>
-  <input id="address" type="text" placeholder="0x..." />
-
-  <label>云端 PoW Worker（阿里云上部署的 hash256-remote-worker）</label>
-  <input id="remote" type="text" placeholder="https://your-ecs-ip:8787/v1/pow-search" />
-
-  <label>可选：Worker X-API-Key（若未在网关环境变量 REMOTE_MINER_API_KEY 中设置）</label>
-  <input id="rkey" type="password" placeholder="留空则使用网关环境变量" autocomplete="off" />
-
-  <label>可选：Flashbots relay URL（主网 / Sepolia 可不填，由网关按 chainId 默认）</label>
-  <input id="relay" type="text" placeholder="https://relay.flashbots.net" />
-
-  <button id="go">远程算 nonce + 本机签名提交 Bundle</button>
-  <pre id="out">（结果将显示在此处）</pre>
-
-  <div class="note">
-    1. 先在阿里云运行：<code>REMOTE_MINER_API_KEY=xxx hash256-remote-worker --host 0.0.0.0 --port 8787</code>（并开放安全组端口）。<br/>
-    2. 本机：<code>export HASH256_PRIVATE_KEY=...</code> 与 <code>export FLASHBOTS_AUTH_KEY=...</code> 后执行：<code>hash256-local-ui --port 8790</code>。<br/>
-    3. 用浏览器打开本页（可通过网关根路径 <code>/</code> 直接打开此 HTML）。
+  <div class="flow">
+    <div><strong>本机</strong>：读链 → 把 challenge 发给 <strong>云端 Worker</strong> 算 nonce → 本机签名 <code>mine(nonce)</code> → 向 Flashbots relay 提交 bundle。</div>
+    <div><strong>云端</strong>：只接收公开 PoW 参数，不接触私钥（需 <code>X-API-Key</code> 与 HTTPS/内网）。</div>
   </div>
 
+  <section>
+    <h2>网关环境（启动 hash256-local-ui 的终端）</h2>
+    <div id="envPills" class="status-row">加载中…</div>
+    <div id="envWarn" class="warn" hidden></div>
+  </section>
+
+  <section>
+    <h2>链与合约</h2>
+    <p style="margin:0 0 0.75rem;font-size:0.78rem;color:var(--muted);line-height:1.45;">
+      可在仓库根目录 <code>.env</code> 中配置 <code>HASH256_READ_RPC</code>、<code>HASH256_MINE_CONTRACT</code>、<code>HASH256_MINER_ADDRESS</code>（留空则从 <code>HASH256_PRIVATE_KEY</code> 推导地址）；保存后重启网关，打开页面会自动填入空项。
+    </p>
+    <label for="rpc">读链 RPC</label>
+    <input id="rpc" type="text" autocomplete="off" placeholder="https://eth-mainnet.g.alchemy.com/v2/..." />
+
+    <label for="contract">Mine 合约地址</label>
+    <input id="contract" type="text" autocomplete="off" placeholder="0x..." />
+
+    <label for="address">矿工地址（与链上登记一致）</label>
+    <input id="address" type="text" autocomplete="off" placeholder="0x..." />
+  </section>
+
+  <section>
+    <h2>云端 PoW Worker</h2>
+    <p style="margin:0 0 0.75rem;font-size:0.78rem;color:var(--muted);line-height:1.45;">
+      可选环境变量 <code>HASH256_REMOTE_WORKER</code> 预填此处；提交仍走 Flashbots bundle（高级里默认主网 relay，Sepolia 请改为 <code>relay-sepolia.flashbots.net</code>）。
+    </p>
+    <label for="remote">Worker URL（须以 <code>/v1/pow-search</code> 结尾）</label>
+    <input id="remote" type="text" autocomplete="off" placeholder="https://你的ECS公网:8787/v1/pow-search" />
+
+    <label for="rkey">Worker API Key（可选）</label>
+    <input id="rkey" type="password" autocomplete="off" placeholder="若已在网关设置 REMOTE_MINER_API_KEY 可留空" />
+
+    <details class="advanced">
+      <summary>高级选项</summary>
+      <label for="relay">Flashbots relay URL（主网 / Sepolia 可留空）</label>
+      <input id="relay" type="text" placeholder="默认按 chainId 选择" />
+      <label for="batch">batch_size（GPU 批大小）</label>
+      <input id="batch" type="number" min="1024" step="1024" value="65536" />
+      <label for="offset">target_block_offset（当前块 + N）</label>
+      <input id="offset" type="number" min="1" max="64" value="1" />
+    </details>
+
+    <button type="button" class="primary" id="go">请求云端算 nonce → 本机签名并提交 Bundle</button>
+  </section>
+
+  <section>
+    <h2>响应</h2>
+    <pre id="out">（JSON 将显示在此处）</pre>
+  </section>
+
+  <footer class="note">
+    推荐：在仓库根目录 <code>cp .env.example .env</code> 后编辑 <code>.env</code>（密钥 + 可选链/合约/Worker/Flashbots relay），启动网关时会自动加载并预填表单。<br />
+    或手动 <code>export HASH256_PRIVATE_KEY=…</code> 等，再运行 <code>hash256-local-ui --host 127.0.0.1 --port 8790</code> → 打开 <a href="/">本页</a>。<br />
+    云端：<code>REMOTE_MINER_API_KEY=… hash256-remote-worker --host 0.0.0.0 --port 8787</code> 并放行安全组。
+  </footer>
+
   <script>
+    const LS = { rpc: "hash256_a_rpc", contract: "hash256_a_contract", address: "hash256_a_address", remote: "hash256_a_remote", relay: "hash256_a_relay" };
     const $ = (id) => document.getElementById(id);
+
+    function loadForm() {
+      try {
+        const r = localStorage.getItem(LS.rpc);
+        if (r) $("rpc").value = r;
+        const c = localStorage.getItem(LS.contract);
+        if (c) $("contract").value = c;
+        const a = localStorage.getItem(LS.address);
+        if (a) $("address").value = a;
+        const w = localStorage.getItem(LS.remote);
+        if (w) $("remote").value = w;
+        const rel = localStorage.getItem(LS.relay);
+        if (rel) $("relay").value = rel;
+      } catch (_) {}
+    }
+
+    function saveForm() {
+      try {
+        localStorage.setItem(LS.rpc, $("rpc").value.trim());
+        localStorage.setItem(LS.contract, $("contract").value.trim());
+        localStorage.setItem(LS.address, $("address").value.trim());
+        localStorage.setItem(LS.remote, $("remote").value.trim());
+        localStorage.setItem(LS.relay, $("relay").value.trim());
+      } catch (_) {}
+    }
+
+    async function applyFormDefaults() {
+      try {
+        const r = await fetch("/api/form-defaults");
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!$("rpc").value && d.rpc) $("rpc").value = d.rpc;
+        if (!$("contract").value && d.contract) $("contract").value = d.contract;
+        if (!$("address").value && d.miner_address) $("address").value = d.miner_address;
+        if (!$("remote").value && d.remote_worker) $("remote").value = d.remote_worker;
+        if (!$("relay").value && d.flashbots_relay_suggested) $("relay").value = d.flashbots_relay_suggested;
+      } catch (_) {}
+    }
+
+    async function refreshEnv() {
+      const el = $("envPills");
+      const warn = $("envWarn");
+      try {
+        const r = await fetch("/api/gateway-status");
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const s = await r.json();
+        const pills = [
+          pill("HASH256_PRIVATE_KEY", s.wallet_key_configured),
+          pill("FLASHBOTS_AUTH_KEY", s.flashbots_auth_configured),
+          pill("REMOTE_MINER_API_KEY", s.remote_worker_api_key_env),
+        ];
+        el.innerHTML = pills.join("");
+        const missing = [];
+        if (!s.wallet_key_configured) missing.push("HASH256_PRIVATE_KEY");
+        if (!s.flashbots_auth_configured) missing.push("FLASHBOTS_AUTH_KEY");
+        if (missing.length) {
+          warn.hidden = false;
+          warn.textContent = "缺少环境变量：" + missing.join("、") + "。请在本机启动网关的 shell 中 export 后再重启 hash256-local-ui。";
+        } else {
+          warn.hidden = true;
+        }
+      } catch (e) {
+        el.innerHTML = '<span class="pill bad">无法读取 /api/gateway-status（是否已启动 hash256-local-ui？）</span>';
+        warn.hidden = false;
+        warn.textContent = String(e);
+      }
+    }
+
+    function pill(name, ok) {
+      const cls = ok ? "pill ok" : "pill bad";
+      const t = ok ? "已配置" : "未设置";
+      return '<span class="' + cls + '">' + name + " · " + t + "</span>";
+    }
+
     $("go").onclick = async () => {
       const btn = $("go");
+      const remote = $("remote").value.trim();
+      if (remote && !remote.includes("pow-search")) {
+        if (!confirm("Worker URL 中未包含 pow-search，可能填错。仍要继续吗？")) return;
+      }
       btn.disabled = true;
       $("out").textContent = "请求中…";
       try {
+        const batch = parseInt($("batch").value, 10);
+        const offset = parseInt($("offset").value, 10);
         const body = {
           rpc: $("rpc").value.trim(),
           contract: $("contract").value.trim(),
           address: $("address").value.trim(),
-          remote_worker: $("remote").value.trim(),
+          remote_worker: remote,
           remote_api_key: $("rkey").value.trim() || null,
           flashbots_relay: $("relay").value.trim() || null,
+          batch_size: Number.isFinite(batch) && batch > 0 ? batch : 65536,
+          target_block_offset: Number.isFinite(offset) && offset >= 1 ? offset : 1,
         };
         const r = await fetch("/api/mine-flashbots-bundle", {
           method: "POST",
@@ -69,16 +321,27 @@
           body: JSON.stringify(body),
         });
         const t = await r.text();
-        let j;
-        try { j = JSON.parse(t); } catch { j = t; }
-        $("out").textContent = JSON.stringify(j, null, 2);
-        if (!r.ok) $("out").textContent = "HTTP " + r.status + "\n" + t;
+        let display = t;
+        try {
+          const j = JSON.parse(t);
+          display = JSON.stringify(j, null, 2);
+          if (r.ok) saveForm();
+        } catch (_) {
+          if (!r.ok) display = "HTTP " + r.status + "\n" + t;
+        }
+        $("out").textContent = display;
       } catch (e) {
         $("out").textContent = String(e);
       } finally {
         btn.disabled = false;
       }
     };
+
+    (async () => {
+      loadForm();
+      await applyFormDefaults();
+      await refreshEnv();
+    })();
   </script>
 </body>
 </html>

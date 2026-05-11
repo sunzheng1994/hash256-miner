@@ -14,6 +14,7 @@ import typer
 from pydantic import BaseModel, Field
 
 from hash256_miner.challenge import digest_less_than_difficulty, pow_hash
+from hash256_miner.env_bootstrap import load_repo_env_file
 from hash256_miner.workers import gpu_worker
 
 # 单入口：与 ``hash256-remote-worker --help`` 根级 ``--host/--port`` 一致（无需 ``serve`` 子命令）
@@ -39,6 +40,15 @@ def _parse_challenge(h: str) -> bytes:
     return b
 
 
+def _mine_cpu_batch(ch: bytes, difficulty: int, base: int, batch_size: int) -> Optional[int]:
+    """在 [base, base+batch_size) 内线性扫描，命中返回 nonce。"""
+    end = min(base + batch_size, (1 << 64))
+    for n in range(base, end):
+        if digest_less_than_difficulty(pow_hash(ch, n), difficulty):
+            return n
+    return None
+
+
 def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
     expected = os.environ.get("REMOTE_MINER_API_KEY", "").strip()
     if expected and api_key.strip() != expected:
@@ -51,18 +61,14 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
 
     batches = 0
     while batches < req.max_batches:
+        hit: Optional[int] = None
         if req.use_gpu and gpu_worker.cupy_available():
             try:
                 hit = gpu_worker.mine_batch_gpu(ch, diff, base, bs)
             except Exception as e:  # noqa: BLE001
                 return {"ok": False, "error": f"gpu: {e!s}"}
         else:
-            hit = None
-            end = min(base + bs, (1 << 64))
-            for n in range(base, end):
-                if digest_less_than_difficulty(pow_hash(ch, n), diff):
-                    hit = n
-                    break
+            hit = _mine_cpu_batch(ch, diff, base, bs)
         batches += 1
         if hit is not None:
             return {"ok": True, "nonce": str(int(hit)), "batches": batches}
@@ -82,6 +88,7 @@ def _main(
     """云端 PoW HTTP 服务；请先 ``pip install -e .`` 并安装 optional-dependencies 里的 remote 组（fastapi、uvicorn）。"""
     if ctx.invoked_subcommand is not None:
         return
+    load_repo_env_file()
     try:
         from fastapi import FastAPI, Header, HTTPException
         from fastapi.middleware.cors import CORSMiddleware
