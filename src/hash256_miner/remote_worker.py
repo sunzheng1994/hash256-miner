@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field
 from hash256_miner.challenge import digest_less_than_difficulty, pow_hash
 from hash256_miner.workers import gpu_worker
 
-app = typer.Typer(no_args_is_help=True, add_completion=False)
+# 单入口：与 ``hash256-remote-worker --help`` 根级 ``--host/--port`` 一致（无需 ``serve`` 子命令）
+app = typer.Typer(invoke_without_command=True, no_args_is_help=False, add_completion=False)
 
 
 class PowSearchRequest(BaseModel):
@@ -72,12 +73,15 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
     return {"ok": False, "error": "exhausted_max_batches", "batches": batches}
 
 
-@app.command("serve")
-def serve_cmd(
+@app.callback(invoke_without_command=True)
+def _main(
+    ctx: typer.Context,
     host: str = typer.Option("0.0.0.0", "--host"),
     port: int = typer.Option(8787, "--port"),
 ) -> None:
-    """Run FastAPI worker (install optional deps: pip install -e \".[remote]\")."""
+    """云端 PoW HTTP 服务；请先 ``pip install -e .`` 并安装 optional-dependencies 里的 remote 组（fastapi、uvicorn）。"""
+    if ctx.invoked_subcommand is not None:
+        return
     try:
         from fastapi import FastAPI, Header, HTTPException
         from fastapi.middleware.cors import CORSMiddleware

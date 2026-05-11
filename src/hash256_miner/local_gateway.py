@@ -20,7 +20,7 @@ from hash256_miner.chain import connect, load_contract, read_mining_state
 from hash256_miner.flashbots_bundle import default_relay_for_chain, send_bundle_single_tx
 from hash256_miner.tx import build_signed_mine_raw, load_private_key
 
-cli = typer.Typer(no_args_is_help=True, add_completion=False)
+cli = typer.Typer(invoke_without_command=True, no_args_is_help=False, add_completion=False)
 
 
 def _repo_web_ui_dir() -> Path:
@@ -46,11 +46,15 @@ def _abi_path(p: str | None) -> Path:
     return Path(__file__).resolve().parent / "abi" / "miner.json"
 
 
-@cli.command("serve")
-def serve_cmd(
+@cli.callback(invoke_without_command=True)
+def _main(
+    ctx: typer.Context,
     host: str = typer.Option("127.0.0.1", "--host", help="Bind only localhost for safety"),
     port: int = typer.Option(8790, "--port"),
 ) -> None:
+    """本机网关 + 静态 web-ui；请先 ``pip install -e .`` 并安装 optional-dependencies 里的 remote 组。"""
+    if ctx.invoked_subcommand is not None:
+        return
     try:
         from fastapi import FastAPI, HTTPException
         from fastapi.middleware.cors import CORSMiddleware

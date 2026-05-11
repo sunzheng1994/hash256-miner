@@ -31,20 +31,20 @@ hash256-mine run \
 
 1. **云端**只跑 PoW（`challenge` + `difficulty`），**不接收、不存储**钱包私钥。用 `REMOTE_MINER_API_KEY` + `X-API-Key` 做简单鉴权，生产环境务必 **HTTPS / 内网**。
 2. **本机**通过 `hash256-local-ui` 读链、把任务 POST 给云端 Worker、拿到 `nonce` 后用 **`HASH256_PRIVATE_KEY`** 签 `mine(nonce)`，再用 **`FLASHBOTS_AUTH_KEY`**（仅用于中继身份签名，可另生成一把空钱包私钥）向 **`eth_sendBundle`** 提交 bundle。
-3. 浏览器打开本仓库 [`web-ui/index.html`](web-ui/index.html)（由本地网关 `serve` 在根路径提供），表单里**不要**填私钥；私钥只放在本机 shell 环境变量中。
+3. 浏览器打开本仓库 [`web-ui/index.html`](web-ui/index.html)（由本地网关在根路径提供），表单里**不要**填私钥；私钥只放在本机 shell 环境变量中。
 
 ```bash
 # --- 阿里云 GPU 机 ---
 pip install -e ".[remote,gpu12]"   # 按需选 GPU extra
 export REMOTE_MINER_API_KEY='长随机串'
-hash256-remote-worker serve --host 0.0.0.0 --port 8787
+hash256-remote-worker --host 0.0.0.0 --port 8787
 
 # --- 本机（含私钥）---
 export HASH256_PRIVATE_KEY='...'
 export FLASHBOTS_AUTH_KEY='...'    # 另一把 key，仅 Flashbots 信誉 / 签名
 export REMOTE_MINER_API_KEY='同上'  # 可选：与云端一致则前端可不填 key
 pip install -e ".[remote]"
-hash256-local-ui serve --host 127.0.0.1 --port 8790
+hash256-local-ui --host 127.0.0.1 --port 8790
 # 浏览器访问 http://127.0.0.1:8790/
 ```
 

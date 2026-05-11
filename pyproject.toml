@@ -31,8 +31,9 @@ remote = [
 
 [project.scripts]
 hash256-mine = "hash256_miner.miner:app"
-hash256-remote-worker = "hash256_miner.remote_worker:main"
-hash256-local-ui = "hash256_miner.local_gateway:main"
+# 指向 Typer 实例（与 hash256-mine 一致），避免经 main() 再转发时与子命令解析冲突
+hash256-remote-worker = "hash256_miner.remote_worker:app"
+hash256-local-ui = "hash256_miner.local_gateway:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
