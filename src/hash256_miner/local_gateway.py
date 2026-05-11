@@ -47,6 +47,7 @@ class MineSubmitBody(BaseModel):
     remote_api_key: str | None = Field(None, description="Or set REMOTE_MINER_API_KEY on gateway")
     abi: str | None = None
     batch_size: int = 65_536
+    max_batches: int = Field(500_000, ge=1_000, le=10_000_000, description="转发给 Worker 的 max_batches 上限")
     flashbots_relay: str | None = None
     target_block_offset: int = Field(1, ge=1, le=64)
 
@@ -166,22 +167,25 @@ def _main(
             c = load_contract(w3, body.contract, abi_path)
             st = read_mining_state(w3, c, body.address, abi_path=abi_path)
 
-        rkey = body.remote_api_key or os.environ.get("REMOTE_MINER_API_KEY", "").strip()
-        gpu_flag = os.environ.get("HASH256_REMOTE_WORKER_USE_GPU", "true").strip().lower()
-        use_gpu = gpu_flag in ("1", "true", "yes", "on")
-        payload = {
-            "challenge_hex": "0x" + st.challenge.hex(),
-            "difficulty": st.difficulty,
-            "batch_size": body.batch_size,
-            "base_nonce": 0,
-            "use_gpu": use_gpu,
-            "max_batches": 50_000,
-        }
+            rkey = body.remote_api_key or os.environ.get("REMOTE_MINER_API_KEY", "").strip()
+            gpu_flag = os.environ.get("HASH256_REMOTE_WORKER_USE_GPU", "true").strip().lower()
+            use_gpu = gpu_flag in ("1", "true", "yes", "on")
+            cap_mb = int(os.environ.get("HASH256_REMOTE_POW_MAX_BATCHES", "10000000"))
+            max_batches = min(int(body.max_batches), max(1000, cap_mb))
+            payload = {
+                "challenge_hex": "0x" + st.challenge.hex(),
+                "difficulty": st.difficulty,
+                "batch_size": body.batch_size,
+                "base_nonce": 0,
+                "use_gpu": use_gpu,
+                "max_batches": max_batches,
+            }
             headers = {}
             if rkey:
                 headers["X-API-Key"] = rkey
 
-            with httpx.Client(timeout=600.0) as client:
+            timeout_s = float(os.environ.get("HASH256_REMOTE_POW_HTTP_TIMEOUT", "3600"))
+            with httpx.Client(timeout=timeout_s) as client:
                 r = client.post(body.remote_worker, json=payload, headers=headers)
                 r.raise_for_status()
                 jr = r.json()

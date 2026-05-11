@@ -201,6 +201,8 @@
       <input id="batch" type="number" min="1024" step="1024" value="65536" />
       <label for="offset">target_block_offset（当前块 + N）</label>
       <input id="offset" type="number" min="1" max="64" value="1" />
+      <label for="maxb">max_batches（单次请求 Worker 最多扫多少批；难度高可调大）</label>
+      <input id="maxb" type="number" min="1000" step="1000" value="500000" />
     </details>
 
     <button type="button" class="primary" id="go">请求云端算 nonce → 本机签名并提交 Bundle</button>
@@ -218,7 +220,7 @@
   </footer>
 
   <script>
-    const LS = { rpc: "hash256_a_rpc", contract: "hash256_a_contract", address: "hash256_a_address", remote: "hash256_a_remote", relay: "hash256_a_relay" };
+    const LS = { rpc: "hash256_a_rpc", contract: "hash256_a_contract", address: "hash256_a_address", remote: "hash256_a_remote", relay: "hash256_a_relay", maxb: "hash256_a_maxb" };
     const $ = (id) => document.getElementById(id);
 
     function loadForm() {
@@ -233,6 +235,8 @@
         if (w) $("remote").value = w;
         const rel = localStorage.getItem(LS.relay);
         if (rel) $("relay").value = rel;
+        const mb = localStorage.getItem(LS.maxb);
+        if (mb) $("maxb").value = mb;
       } catch (_) {}
     }
 
@@ -243,6 +247,7 @@
         localStorage.setItem(LS.address, $("address").value.trim());
         localStorage.setItem(LS.remote, $("remote").value.trim());
         localStorage.setItem(LS.relay, $("relay").value.trim());
+        localStorage.setItem(LS.maxb, $("maxb").value.trim());
       } catch (_) {}
     }
 
@@ -305,6 +310,7 @@
       try {
         const batch = parseInt($("batch").value, 10);
         const offset = parseInt($("offset").value, 10);
+        const maxb = parseInt($("maxb").value, 10);
         const body = {
           rpc: $("rpc").value.trim(),
           contract: $("contract").value.trim(),
@@ -314,6 +320,7 @@
           flashbots_relay: $("relay").value.trim() || null,
           batch_size: Number.isFinite(batch) && batch > 0 ? batch : 65536,
           target_block_offset: Number.isFinite(offset) && offset >= 1 ? offset : 1,
+          max_batches: Number.isFinite(maxb) && maxb >= 1000 ? maxb : 500000,
         };
         const r = await fetch("/api/mine-flashbots-bundle", {
           method: "POST",

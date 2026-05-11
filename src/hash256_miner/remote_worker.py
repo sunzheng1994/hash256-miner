@@ -27,7 +27,7 @@ class PowSearchRequest(BaseModel):
     batch_size: int = 65_536
     base_nonce: int = Field(0, ge=0, description="Lower 64-bit nonce base for GPU path")
     use_gpu: bool = True
-    max_batches: int = Field(10_000, description="Safety cap per HTTP request")
+    max_batches: int = Field(500_000, ge=1, le=10_000_000, description="Safety cap per HTTP request")
 
 
 def _parse_challenge(h: str) -> bytes:
