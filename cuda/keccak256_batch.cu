@@ -5,11 +5,11 @@
   SPDX-License-Identifier: Apache-2.0
 */
 /*
- * CuPy RawModule 走 NVRTC 时往往只有 libnvrtc，没有完整 CUDA Toolkit，故无 cuda_runtime.h。
- * NVRTC 预定义 __CUDACC_RTC__；此时 __device__/__global__/blockIdx 等均为内建，无需该头文件。
+ * CuPy RawModule uses NVRTC: often only libnvrtc is present, not full CUDA Toolkit (no cuda_runtime.h).
+ * NVRTC defines __CUDACC_RTC__; __device__/__global__/blockIdx are built-in without that header.
  */
 #if defined(__CUDACC_RTC__)
-/* NVRTC：不要 include 系统 stdint.h/string.h，否则会拖入 glibc 的 bits/libc-header-start.h 等路径导致 JIT 失败 */
+/* NVRTC: avoid stdint.h/string.h; they pull glibc bits/*.h and break JIT on minimal servers. */
 typedef unsigned char uint8_t;
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
