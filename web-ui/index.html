@@ -203,6 +203,8 @@
       <input id="offset" type="number" min="1" max="64" value="1" />
       <label for="maxb">max_batches（单次请求 Worker 最多扫多少批；难度高可调大）</label>
       <input id="maxb" type="number" min="1000" step="1000" value="500000" />
+      <label for="pfx">nonce_prefix_hex（可选，0x+48hex；留空则网关每次随机 24 字节，与 hash-cli-miner 一致）</label>
+      <input id="pfx" type="text" autocomplete="off" placeholder="留空 = 随机" />
     </details>
 
     <button type="button" class="primary" id="go">请求云端算 nonce → 本机签名并提交 Bundle</button>
@@ -220,7 +222,7 @@
   </footer>
 
   <script>
-    const LS = { rpc: "hash256_a_rpc", contract: "hash256_a_contract", address: "hash256_a_address", remote: "hash256_a_remote", relay: "hash256_a_relay", maxb: "hash256_a_maxb" };
+    const LS = { rpc: "hash256_a_rpc", contract: "hash256_a_contract", address: "hash256_a_address", remote: "hash256_a_remote", relay: "hash256_a_relay", maxb: "hash256_a_maxb", pfx: "hash256_a_pfx" };
     const $ = (id) => document.getElementById(id);
 
     function loadForm() {
@@ -237,6 +239,8 @@
         if (rel) $("relay").value = rel;
         const mb = localStorage.getItem(LS.maxb);
         if (mb) $("maxb").value = mb;
+        const pfx = localStorage.getItem(LS.pfx);
+        if (pfx) $("pfx").value = pfx;
       } catch (_) {}
     }
 
@@ -248,6 +252,7 @@
         localStorage.setItem(LS.remote, $("remote").value.trim());
         localStorage.setItem(LS.relay, $("relay").value.trim());
         localStorage.setItem(LS.maxb, $("maxb").value.trim());
+        localStorage.setItem(LS.pfx, $("pfx").value.trim());
       } catch (_) {}
     }
 
@@ -328,6 +333,8 @@
           target_block_offset: Number.isFinite(offset) && offset >= 1 ? offset : 1,
           max_batches: Number.isFinite(maxb) && maxb >= 1000 ? maxb : 500000,
         };
+        const pfx = $("pfx").value.trim();
+        if (pfx) body.nonce_prefix_hex = pfx;
         const r = await fetch("/api/mine-flashbots-bundle", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

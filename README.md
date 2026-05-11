@@ -91,6 +91,7 @@ hash256-mine run \
 1. `challenge = keccak256( abi.encodePacked(chainId, contract, miner, epoch) )` — 原像长度 **104** 字节。
 2. `digest = keccak256( abi.encodePacked(challenge, nonce) )` — 原像长度 **64** 字节。
 3. 有效当 `int(digest, big-endian) < difficulty`。
+4. **搜索布局（与 [hash-cli-miner](https://github.com/0xchukss/hash-cli-miner) 一致）**：`uint256 nonce` 在内存中为 **24 字节随机前缀** + **8 字节大端 uint64 counter**；GPU/Worker 在 **counter** 空间步进，epoch 变化时 CLI 会换新前缀。`hash256-mine run` 与 Worker 进度日志会打印 **GH/s / MH/s** 瞬时算力。
 
 ## 调优建议
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -57,6 +58,10 @@ class MineSubmitBody(BaseModel):
         ge=50,
         le=1_000_000,
         description="仅 Pool：转发 lease_max_batches；单 Worker 可留空",
+    )
+    nonce_prefix_hex: str | None = Field(
+        default=None,
+        description="可选 0x+48hex；留空则网关每次请求随机 24 字节（与 hash-cli 一致）",
     )
     flashbots_relay: str | None = None
     target_block_offset: int = Field(1, ge=1, le=64)
@@ -197,6 +202,10 @@ def _main(
             }
             if body.pool_lease_max_batches is not None:
                 payload["lease_max_batches"] = body.pool_lease_max_batches
+            if body.nonce_prefix_hex is not None and str(body.nonce_prefix_hex).strip():
+                payload["nonce_prefix_hex"] = str(body.nonce_prefix_hex).strip()
+            else:
+                payload["nonce_prefix_hex"] = "0x" + secrets.token_hex(24)
             headers = {}
             if rkey:
                 headers["X-API-Key"] = rkey

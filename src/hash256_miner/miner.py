@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import secrets
 import signal
 import threading
 import time
@@ -35,6 +36,16 @@ from hash256_miner.workers import cpu_worker, gpu_worker
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 log = logging.getLogger(__name__)
+
+
+def _fmt_hashrate(hz: float) -> str:
+    if hz >= 1e9:
+        return f"{hz / 1e9:.2f} GH/s"
+    if hz >= 1e6:
+        return f"{hz / 1e6:.2f} MH/s"
+    if hz >= 1e3:
+        return f"{hz / 1e3:.2f} KH/s"
+    return f"{hz:.0f} H/s"
 
 
 def _default_abi_path() -> Path:
@@ -145,7 +156,7 @@ def run_cmd(
         log.warning("CuPy / CUDA not available; falling back to CPU-only mode")
 
     telemetry = Telemetry()
-    gpu_base = (nonce_seed if nonce_seed is not None else random.randrange(1 << 62)) & ((1 << 64) - 1)
+    gpu_counter = (nonce_seed if nonce_seed is not None else random.randrange(1 << 62)) & ((1 << 64) - 1)
     cpu_base = random.randrange(1 << 60)
 
     chunk = max(4096, min(batch_size, 2_000_000))
@@ -153,27 +164,37 @@ def run_cmd(
     result: dict[str, int | None] = {"nonce": None}
 
     def gpu_thread_fn() -> None:
-        nonlocal gpu_base
+        nonlocal gpu_counter
         if not use_gpu:
             return
+        last_gen = -1
+        gpu_prefix = secrets.token_bytes(24)
         while not stop.is_set() and result["nonce"] is None:
             try:
                 st = coord.current()
             except Exception:
                 time.sleep(0.2)
                 continue
+            gen = coord.generation_id()
+            if gen != last_gen:
+                last_gen = gen
+                gpu_prefix = secrets.token_bytes(24)
+                gpu_counter = (nonce_seed if nonce_seed is not None else random.randrange(1 << 62)) & (
+                    (1 << 64) - 1
+                )
             try:
                 hit = gpu_worker.mine_batch_gpu(
                     st.challenge,
                     st.difficulty,
-                    int(gpu_base),
+                    gpu_prefix,
+                    int(gpu_counter),
                     int(batch_size),
                 )
             except Exception:
                 log.exception("GPU batch failed; stopping GPU thread")
                 return
             telemetry.record_gpu(batch_size)
-            gpu_base = (gpu_base + batch_size) & ((1 << 64) - 1)
+            gpu_counter = (gpu_counter + batch_size) & ((1 << 64) - 1)
             if hit is not None:
                 result["nonce"] = int(hit)
                 stop.set()
@@ -195,9 +216,11 @@ def run_cmd(
         tw = max(1, threads)
         span = chunk * tw
         end = cpu_base + span
+        prefix24 = secrets.token_bytes(24)
 
         futures = [
-            pool.submit(cpu_worker.stride_search, ch, diff, cpu_base, end, tw, off) for off in range(tw)
+            pool.submit(cpu_worker.stride_search_prefix, ch, diff, prefix24, cpu_base, end, tw, off)
+            for off in range(tw)
         ]
         total_tried = 0
         for fut in futures:
@@ -221,16 +244,16 @@ def run_cmd(
                         result["nonce"] = hit
                         break
                     bar.update(chunk * max(1, threads))
-                    tbl = Table(title="HASH256 miner")
+                    tbl = Table(title="HASH256 miner (nonce = prefix24 ‖ uint64 counter BE)")
                     try:
                         st = coord.current()
                         tbl.add_row("epoch", str(st.epoch))
                         tbl.add_row("difficulty", hex(st.difficulty))
                         tbl.add_row("challenge[0:4]", st.challenge[:4].hex())
                         tbl.add_row("block", str(st.block_number))
-                        tbl.add_row("GPU", f"{telemetry.gpu_meter.rate_hz()/1e6:.3f} MH/s")
-                        tbl.add_row("CPU", f"{telemetry.cpu_meter.rate_hz()/1e6:.3f} MH/s")
-                        tbl.add_row("Total", f"{telemetry.total_rate_mh_s():.3f} MH/s")
+                        tbl.add_row("GPU", _fmt_hashrate(telemetry.gpu_meter.rate_hz()))
+                        tbl.add_row("CPU", _fmt_hashrate(telemetry.cpu_meter.rate_hz()))
+                        tbl.add_row("Total", _fmt_hashrate(telemetry.total_meter.rate_hz()))
                         tbl.add_row("GPU hashes", str(telemetry.gpu_hashes))
                         tbl.add_row("CPU hashes", str(telemetry.cpu_hashes))
                     except Exception:

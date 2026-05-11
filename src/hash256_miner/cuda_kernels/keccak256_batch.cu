@@ -360,30 +360,34 @@ __device__ __forceinline__ int u256_be_lt(const uint8_t a[32], const uint8_t b[3
     return 0;
 }
 
-__device__ __forceinline__ void write_u256_be_nonce(uint8_t buf[64], unsigned long long v) {
-    for (int i = 0; i < 24; i++) {
-        buf[32 + i] = 0;
-    }
+/* Nonce layout aligned with hash-cli-miner: uint256 = prefix24 || counter_be_8 */
+__device__ __forceinline__ void write_nonce_prefix_counter(
+    uint8_t buf[64],
+    const uint8_t* __restrict__ prefix24,
+    unsigned long long counter
+) {
+    k_memcpy(buf + 32, prefix24, 24);
     for (int j = 0; j < 8; j++) {
-        buf[56 + j] = (uint8_t)((v >> (8 * (7 - j))) & 0xff);
+        buf[56 + j] = (uint8_t)((counter >> (8 * (7 - j))) & 0xff);
     }
 }
 
 extern "C" __global__ void hash256_mine_batch(
     const uint8_t* __restrict__ challenge,
     const uint8_t* __restrict__ difficulty,
-    unsigned long long base_nonce,
+    const uint8_t* __restrict__ prefix24,
+    unsigned long long base_counter,
     unsigned int batch,
-    unsigned long long* found_nonce,
+    unsigned long long* found_counter,
     int* found_atomic
 ) {
     unsigned int tid = blockIdx.x * blockDim.x + threadIdx.x;
     if (tid >= batch) return;
 
-    unsigned long long nonce = base_nonce + (unsigned long long)tid;
+    unsigned long long counter = base_counter + (unsigned long long)tid;
     uint8_t buf[64];
     k_memcpy(buf, challenge, 32);
-    write_u256_be_nonce(buf, nonce);
+    write_nonce_prefix_counter(buf, prefix24, counter);
 
     uint8_t digest[32];
     device_keccak256(buf, sizeof(buf), digest);
@@ -392,6 +396,6 @@ extern "C" __global__ void hash256_mine_batch(
 
     int was = atomicCAS(found_atomic, 0, 1);
     if (was == 0) {
-        *found_nonce = nonce;
+        *found_counter = counter;
     }
 }

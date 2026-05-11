@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import time
 from typing import Optional
 
 import typer
 from pydantic import BaseModel, ConfigDict, Field
 
-from hash256_miner.challenge import digest_less_than_difficulty, pow_hash
+from hash256_miner.challenge import (
+    digest_less_than_difficulty,
+    pow_hash_prefix_counter,
+    uint256_from_prefix_counter,
+)
 from hash256_miner.env_bootstrap import load_repo_env_file
 from hash256_miner.workers import gpu_worker
 
@@ -31,7 +36,15 @@ class PowSearchRequest(BaseModel):
     challenge_hex: str = Field(..., description="0x-prefixed or raw hex, 64 hex chars = 32 bytes")
     difficulty: int
     batch_size: int = 65_536
-    base_nonce: int = Field(0, ge=0, description="Lower 64-bit nonce base for GPU path")
+    base_nonce: int = Field(
+        0,
+        ge=0,
+        description="uint64 counter base; on-chain nonce = prefix24 || counter (BE), same as hash-cli-miner",
+    )
+    nonce_prefix_hex: str | None = Field(
+        default=None,
+        description="Optional 0x + 48 hex (24 bytes). Omit to use a random prefix for this HTTP request.",
+    )
     use_gpu: bool = True
     max_batches: int = Field(500_000, ge=1, le=10_000_000, description="Safety cap per HTTP request")
 
@@ -46,12 +59,23 @@ def _parse_challenge(h: str) -> bytes:
     return b
 
 
-def _mine_cpu_batch(ch: bytes, difficulty: int, base: int, batch_size: int) -> Optional[int]:
-    """在 [base, base+batch_size) 内线性扫描，命中返回 nonce。"""
+def _parse_nonce_prefix_hex(raw: str | None) -> bytes:
+    if raw is None or not str(raw).strip():
+        return secrets.token_bytes(24)
+    s = str(raw).strip().lower()
+    if s.startswith("0x"):
+        s = s[2:]
+    if len(s) != 48 or any(c not in "0123456789abcdef" for c in s):
+        raise ValueError("nonce_prefix_hex must be 24 bytes as 0x + 48 hex chars")
+    return bytes.fromhex(s)
+
+
+def _mine_cpu_batch(ch: bytes, difficulty: int, prefix24: bytes, base: int, batch_size: int) -> Optional[int]:
+    """Linear scan counters [base, base+batch_size); returns full uint256 mine nonce."""
     end = min(base + batch_size, (1 << 64))
-    for n in range(base, end):
-        if digest_less_than_difficulty(pow_hash(ch, n), difficulty):
-            return n
+    for c in range(base, end):
+        if digest_less_than_difficulty(pow_hash_prefix_counter(ch, prefix24, c), difficulty):
+            return uint256_from_prefix_counter(prefix24, c)
     return None
 
 
@@ -64,15 +88,20 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
     diff = int(req.difficulty)
     bs = int(req.batch_size)
     base = int(req.base_nonce)
+    try:
+        prefix24 = _parse_nonce_prefix_hex(req.nonce_prefix_hex)
+    except ValueError as e:
+        return {"ok": False, "error": f"bad_prefix:{e}"}
 
     prog_step = int(os.environ.get("HASH256_POW_PROGRESS_LOG_EVERY", "2000"))
     prog_step = max(100, min(50_000, prog_step))
     t0 = time.perf_counter()
     _log.info(
-        "pow-search start batch_size=%s max_batches=%s use_gpu=%s",
+        "pow-search start batch_size=%s max_batches=%s use_gpu=%s prefix=%s",
         bs,
         req.max_batches,
         req.use_gpu and gpu_worker.cupy_available(),
+        prefix24[:4].hex() + "…",
     )
 
     batches = 0
@@ -80,19 +109,27 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
         hit: Optional[int] = None
         if req.use_gpu and gpu_worker.cupy_available():
             try:
-                hit = gpu_worker.mine_batch_gpu(ch, diff, base, bs)
+                hit = gpu_worker.mine_batch_gpu(ch, diff, prefix24, base, bs)
             except Exception as e:  # noqa: BLE001
                 return {"ok": False, "error": f"gpu: {e!s}"}
         else:
-            hit = _mine_cpu_batch(ch, diff, base, bs)
+            hit = _mine_cpu_batch(ch, diff, prefix24, base, bs)
         batches += 1
         if batches == 1 or batches % prog_step == 0:
+            elapsed = time.perf_counter() - t0
+            hashes = batches * bs
+            hr = hashes / elapsed if elapsed > 0 else 0.0
+            ghs = hr / 1e9
+            mhs = hr / 1e6
+            hr_s = f"{ghs:.2f} GH/s" if ghs >= 1.0 else f"{mhs:.2f} MH/s"
             _log.info(
-                "pow-search progress batches=%s/%s base_nonce=%s elapsed_s=%.1f",
+                "pow-search progress batches=%s/%s counter_base=%s hashes=%s %s elapsed_s=%.1f",
                 batches,
                 req.max_batches,
                 base,
-                time.perf_counter() - t0,
+                hashes,
+                hr_s,
+                elapsed,
             )
         if hit is not None:
             _log.info(
@@ -106,10 +143,18 @@ def _search_impl(req: PowSearchRequest, api_key: str) -> dict:
         if base >= 1 << 64:
             base = 0
 
+    elapsed = time.perf_counter() - t0
+    hashes = batches * bs
+    hr = hashes / elapsed if elapsed > 0 else 0.0
+    ghs = hr / 1e9
+    mhs = hr / 1e6
+    hr_s = f"{ghs:.2f} GH/s" if ghs >= 1.0 else f"{mhs:.2f} MH/s"
     _log.info(
-        "pow-search exhausted_max_batches batches=%s elapsed_s=%.1f",
+        "pow-search exhausted_max_batches batches=%s hashes=%s %s elapsed_s=%.1f",
         batches,
-        time.perf_counter() - t0,
+        hashes,
+        hr_s,
+        elapsed,
     )
     return {"ok": False, "error": "exhausted_max_batches", "batches": batches}
 

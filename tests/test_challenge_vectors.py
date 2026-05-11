@@ -7,6 +7,8 @@ from hash256_miner.challenge import (
     digest_less_than_difficulty,
     encode_pow_preimage,
     pow_hash,
+    pow_hash_prefix_counter,
+    uint256_from_prefix_counter,
 )
 
 
@@ -40,3 +42,16 @@ def test_difficulty_boundary():
 def test_max_difficulty_always_valid():
     digest = ((1 << 256) - 1).to_bytes(32, "big")
     assert digest_less_than_difficulty(digest, 1 << 256) is True
+
+
+def test_prefix_counter_matches_uint256_pow_hash():
+    challenge = compute_challenge(
+        chain_id=31337,
+        contract_address="0x" + "01" * 20,
+        miner_address="0x" + "02" * 20,
+        epoch=42,
+    )
+    prefix = bytes(range(24))
+    for counter in (0, 1, 12345, (1 << 64) - 1):
+        n = uint256_from_prefix_counter(prefix, counter)
+        assert pow_hash(challenge, n) == pow_hash_prefix_counter(challenge, prefix, counter)

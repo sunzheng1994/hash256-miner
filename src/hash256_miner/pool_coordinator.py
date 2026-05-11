@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from typing import Any
 
 import httpx
@@ -46,6 +47,10 @@ class PowPoolSearchBody(BaseModel):
         le=1_000_000,
         description="Per-worker HTTP call max_batches (smaller = more frequent fan-out / lower tail latency)",
     )
+    nonce_prefix_hex: str | None = Field(
+        default=None,
+        description="Optional shared 24-byte prefix (0x+48 hex) for all pool workers; omit = each worker random",
+    )
 
 
 def _parse_worker_urls() -> list[str]:
@@ -69,6 +74,10 @@ async def pool_search_core(
 ) -> dict[str, Any]:
     if not worker_urls:
         return {"ok": False, "error": "pool_no_workers", "detail": "set HASH256_POOL_WORKER_URLS"}
+
+    pool_prefix_hex: str | None = body.nonce_prefix_hex
+    if pool_prefix_hex is None and len(worker_urls) > 1:
+        pool_prefix_hex = "0x" + secrets.token_hex(24)
 
     budget = int(body.max_batches)
     lease_cap = int(body.lease_max_batches)
@@ -133,6 +142,8 @@ async def pool_search_core(
                 "use_gpu": bool(body.use_gpu),
                 "max_batches": lb,
             }
+            if pool_prefix_hex is not None:
+                payload["nonce_prefix_hex"] = pool_prefix_hex
             try:
                 r = await client.post(url, json=payload, headers=headers)
                 r.raise_for_status()
